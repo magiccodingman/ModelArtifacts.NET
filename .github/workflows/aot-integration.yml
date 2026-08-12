@@ -67,7 +67,11 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
       - name: Compile and run C consumer (Windows)
         if: runner.os == 'Windows'
-        shell: cmd
+        shell: pwsh
         run: |
-          cl /nologo /I native\include native\smoke\c\smoke.c /link /LIBPATH:artifacts\native\${{ matrix.rid }} ModelArtifacts.Native.lib /OUT:artifacts\native\${{ matrix.rid }}\smoke.exe
-          artifacts\native\${{ matrix.rid }}\smoke.exe native/smoke/assets
+          $importLibrary = Get-ChildItem src/ModelArtifacts.Native/bin/Release/net10.0/${{ matrix.rid }}/native/ModelArtifacts.Native.lib | Select-Object -First 1
+          if (-not $importLibrary) { throw 'Native AOT import library was not produced.' }
+          & cl /nologo /I native/include native/smoke/c/smoke.c /link $importLibrary.FullName "/OUT:artifacts/native/${{ matrix.rid }}/smoke.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./artifacts/native/${{ matrix.rid }}/smoke.exe native/smoke/assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

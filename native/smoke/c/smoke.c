@@ -11,15 +11,18 @@ static int fail_with_last_error(const char* operation, int status) {
     return 1;
 }
 
+static int contains_bytes(const ma_buffer* buffer, const char* needle) {
+    size_t needle_len = strlen(needle);
+    if (!buffer->data || needle_len == 0 || buffer->length < needle_len) return 0;
+    for (size_t i = 0; i <= buffer->length - needle_len; i++) {
+        if (memcmp(buffer->data + i, needle, needle_len) == 0) return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        fprintf(stderr, "usage: smoke <local-artifact-directory>\n");
-        return 2;
-    }
-    if (ma_abi_version() != MA_ABI_VERSION) {
-        fprintf(stderr, "ABI mismatch\n");
-        return 3;
-    }
+    if (argc < 2) { fprintf(stderr, "usage: smoke <local-artifact-directory>\n"); return 2; }
+    if (ma_abi_version() != MA_ABI_VERSION) { fprintf(stderr, "ABI mismatch\n"); return 3; }
 
     char path[2048];
     size_t path_len = strlen(argv[1]);
@@ -48,10 +51,7 @@ int main(int argc, char** argv) {
     ma_buffer metadata = {0};
     status = ma_candidate_metadata_json(candidate, &metadata);
     if (status != MA_OK) return fail_with_last_error("ma_candidate_metadata_json", status);
-    if (metadata.length == 0 || strstr((const char*)metadata.data, "artifactFingerprint") == NULL) {
-        fprintf(stderr, "metadata missing fingerprint\n");
-        return 6;
-    }
+    if (!contains_bytes(&metadata, "artifactFingerprint")) { fprintf(stderr, "metadata missing fingerprint\n"); return 6; }
     ma_buffer_free(&metadata);
     if (metadata.data != NULL || metadata.length != 0) return 7;
 
@@ -62,10 +62,7 @@ int main(int argc, char** argv) {
 
     ma_buffer invalid = {0};
     status = ma_candidate_path((ma_handle)999999, &invalid);
-    if (status != MA_INVALID_HANDLE) {
-        fprintf(stderr, "expected invalid handle status\n");
-        return 8;
-    }
+    if (status != MA_INVALID_HANDLE) { fprintf(stderr, "expected invalid handle status\n"); return 8; }
     ma_buffer error = {0};
     ma_get_last_error(&error);
     if (error.length == 0) return 9;

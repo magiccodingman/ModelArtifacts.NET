@@ -23,6 +23,7 @@ jobs:
           - os: macos-latest
             rid: osx-x64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -44,18 +45,22 @@ jobs:
         shell: pwsh
         run: ./artifacts/aot-smoke/ModelArtifacts.AotSmoke.exe
       - name: Publish Native AOT shared library
-        run: dotnet publish src/ModelArtifacts.Native/ModelArtifacts.Native.csproj -c Release -r ${{ matrix.rid }} -p:PublishAot=true -o artifacts/native/${{ matrix.rid }}
+        run: dotnet publish src/ModelArtifacts.Native/ModelArtifacts.Native.csproj -c Release -r ${{ matrix.rid }} -p:PublishAot=true -p:NativeLib=Shared -o artifacts/native/${{ matrix.rid }}
       - name: Compile and run C consumer (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cc native/smoke/c/smoke.c -Inative/include -Lartifacts/native/${{ matrix.rid }} -lModelArtifacts.Native -Wl,-rpath,'$ORIGIN' -o artifacts/native/${{ matrix.rid }}/smoke
+          library=$(find artifacts/native/${{ matrix.rid }} -maxdepth 1 -type f -name '*ModelArtifacts.Native*.so' | head -n1)
+          test -n "$library"
+          cc native/smoke/c/smoke.c -Inative/include "$library" -Wl,-rpath,'$ORIGIN' -o artifacts/native/${{ matrix.rid }}/smoke
           ./artifacts/native/${{ matrix.rid }}/smoke native/smoke/assets
       - name: Compile and run C consumer (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          cc native/smoke/c/smoke.c -Inative/include -Lartifacts/native/${{ matrix.rid }} -lModelArtifacts.Native -Wl,-rpath,@loader_path -o artifacts/native/${{ matrix.rid }}/smoke
+          library=$(find artifacts/native/${{ matrix.rid }} -maxdepth 1 -type f -name '*ModelArtifacts.Native*.dylib' | head -n1)
+          test -n "$library"
+          cc native/smoke/c/smoke.c -Inative/include "$library" -Wl,-rpath,@loader_path -o artifacts/native/${{ matrix.rid }}/smoke
           ./artifacts/native/${{ matrix.rid }}/smoke native/smoke/assets
       - name: Configure MSVC
         if: runner.os == 'Windows'

@@ -362,6 +362,7 @@ public sealed class ArtifactManager : IDisposable
             catch (IOException)
             {
                 await DelayAsync(options.LockRetryDelay, cancellationToken).ConfigureAwait(false);
+                await Task.Yield();
             }
         }
     }

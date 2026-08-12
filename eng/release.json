@@ -1,0 +1,7 @@
+{
+  "initialVersion": "0.1.0",
+  "tagPrefix": "v",
+  "packageIds": [
+    "ModelArtifacts.NET"
+  ]
+}

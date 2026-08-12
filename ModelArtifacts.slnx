@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ModelArtifacts/ModelArtifacts.csproj" />
+    <Project Path="src/ModelArtifacts.Native/ModelArtifacts.Native.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ModelArtifacts.Tests/ModelArtifacts.Tests.csproj" />
+    <Project Path="tests/ModelArtifacts.AotSmoke/ModelArtifacts.AotSmoke.csproj" />
+  </Folder>
+</Solution>

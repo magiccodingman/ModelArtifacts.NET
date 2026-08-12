@@ -1,0 +1,77 @@
+name: Native AOT Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aot:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build and test managed code
+        run: |
+          dotnet restore ModelArtifacts.slnx
+          dotnet build ModelArtifacts.slnx --configuration Release --no-restore
+          dotnet test tests/ModelArtifacts.Tests/ModelArtifacts.Tests.csproj --configuration Release --no-build
+      - name: Publish managed Native AOT smoke
+        run: dotnet publish tests/ModelArtifacts.AotSmoke/ModelArtifacts.AotSmoke.csproj -c Release -r ${{ matrix.rid }} -o artifacts/aot-smoke
+      - name: Run managed Native AOT smoke (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./artifacts/aot-smoke/ModelArtifacts.AotSmoke
+      - name: Run managed Native AOT smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./artifacts/aot-smoke/ModelArtifacts.AotSmoke.exe
+      - name: Publish Native AOT shared library
+        run: dotnet publish src/ModelArtifacts.Native/ModelArtifacts.Native.csproj -c Release -r ${{ matrix.rid }} -p:PublishAot=true -p:NativeLib=Shared -o artifacts/native/${{ matrix.rid }}
+      - name: Compile and run C consumer (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          library=$(find artifacts/native/${{ matrix.rid }} -maxdepth 1 -type f -name '*ModelArtifacts.Native*.so' | head -n1)
+          test -n "$library"
+          cc native/smoke/c/smoke.c -Inative/include "$library" -Wl,-rpath,'$ORIGIN' -o artifacts/native/${{ matrix.rid }}/smoke
+          ./artifacts/native/${{ matrix.rid }}/smoke native/smoke/assets
+      - name: Compile and run C consumer (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          library=$(find artifacts/native/${{ matrix.rid }} -maxdepth 1 -type f -name '*ModelArtifacts.Native*.dylib' | head -n1)
+          test -n "$library"
+          cc native/smoke/c/smoke.c -Inative/include "$library" -Wl,-rpath,@loader_path -o artifacts/native/${{ matrix.rid }}/smoke
+          ./artifacts/native/${{ matrix.rid }}/smoke native/smoke/assets
+      - name: Configure MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Compile and run C consumer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $importLibrary = Get-ChildItem src/ModelArtifacts.Native/bin/Release/net10.0/${{ matrix.rid }}/native/ModelArtifacts.Native.lib | Select-Object -First 1
+          if (-not $importLibrary) { throw 'Native AOT import library was not produced.' }
+          & cl /nologo /I native/include native/smoke/c/smoke.c /link $importLibrary.FullName "/OUT:artifacts/native/${{ matrix.rid }}/smoke.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./artifacts/native/${{ matrix.rid }}/smoke.exe native/smoke/assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

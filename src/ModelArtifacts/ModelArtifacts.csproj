@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>ModelArtifacts.NET</AssemblyName>
+    <RootNamespace>ModelArtifacts</RootNamespace>
+    <PackageId>ModelArtifacts.NET</PackageId>
+    <Description>Safe, revisioned acquisition, caching, verification, activation, rollback, and cleanup for AI/model artifacts.</Description>
+    <PackageTags>ai;model;artifacts;huggingface;cache;aot;nativeaot</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>128x128_compressed.png</PackageIcon>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../128x128_compressed.png" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

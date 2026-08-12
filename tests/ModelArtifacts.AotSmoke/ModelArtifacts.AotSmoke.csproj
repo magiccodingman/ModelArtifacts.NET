@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/ModelArtifacts/ModelArtifacts.csproj" />
+    <None Include="../../native/smoke/assets/tiny.txt" Link="tiny.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

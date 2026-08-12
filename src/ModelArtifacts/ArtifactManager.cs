@@ -377,10 +377,10 @@ public sealed class ArtifactManager : IDisposable
         {
             var fullPath = EnsureContained(directory, ArtifactPathSafety.ValidateRelativePath(relative));
             if (!File.Exists(fullPath)) throw new ArtifactException($"Managed artifact '{relative}' does not exist.");
-            var pathBytes = Encoding.UTF8.GetBytes(relative);
-            aggregate.AppendData(BitConverter.GetBytes(pathBytes.Length));
-            aggregate.AppendData(pathBytes);
-            aggregate.AppendData(await SHA256.HashDataAsync(File.OpenRead(fullPath), cancellationToken).ConfigureAwait(false));
+            aggregate.AppendData(Encoding.UTF8.GetBytes(relative));
+            aggregate.AppendData([0]);
+            await using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, true);
+            aggregate.AppendData(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
         }
         return Convert.ToHexString(aggregate.GetHashAndReset()).ToLowerInvariant();
     }
@@ -413,4 +413,6 @@ internal sealed record CurrentCacheRecord(
 [JsonSerializable(typeof(CurrentCacheRecord))]
 [JsonSerializable(typeof(HuggingFaceApiModel))]
 [JsonSerializable(typeof(HttpManifestDto))]
-internal sealed partial class ArtifactJsonContext : JsonSerializerContext;
+internal sealed partial class ArtifactJsonContext : JsonSerializerContext
+{
+}

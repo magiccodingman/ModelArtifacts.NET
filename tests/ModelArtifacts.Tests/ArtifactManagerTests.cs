@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using ModelArtifacts;
+using Xunit;
 
 namespace ModelArtifacts.Tests;
 
@@ -34,7 +34,7 @@ public sealed class ArtifactManagerTests
         });
         using var manager = Manager(new HuggingFaceArtifactSource("org/repo", ArtifactSelection.Patterns("weights", "weights/*")), handler);
         var candidate = await manager.ResolveCandidateAsync();
-        Assert.Equal(["weights/model.bin"], candidate.Snapshot.AssetPaths);
+        Assert.Equal(new[] { "weights/model.bin" }, candidate.Snapshot.AssetPaths);
         Assert.DoesNotContain(requests, x => x.EndsWith("README.md", StringComparison.Ordinal));
     }
 
@@ -91,7 +91,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Http_manifest_validates_sizes()
+    public async Task Http_manifest_supports_sizes()
     {
         var handler = ManifestHandler("""{"artifactSetId":"tiny","revision":"r1","assets":[{"path":"a.bin","size":3}]}""", "abc");
         using var manager = Manager(new HttpManifestArtifactSource(new Uri("https://example.test/manifest.json")), handler);
@@ -100,7 +100,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Http_manifest_validates_sha256()
+    public async Task Http_manifest_supports_sha256()
     {
         var hash = Sha256("abc");
         var handler = ManifestHandler($$"""{"artifactSetId":"tiny","revision":"r1","assets":[{"path":"a.bin","sha256":"{{hash}}"}]}""", "abc");
@@ -149,7 +149,7 @@ public sealed class ArtifactManagerTests
             if (req.RequestUri!.AbsolutePath == "/manifest.json") return Json(HttpStatusCode.OK, """{"artifactSetId":"tiny","revision":"r1","assets":["a.bin"]}""");
             return Interlocked.Increment(ref attempts) < 3 ? Bytes(HttpStatusCode.ServiceUnavailable, "") : Bytes(HttpStatusCode.OK, "abc");
         });
-        using var manager = Manager(new HttpManifestArtifactSource(new Uri("https://example.test/manifest.json")), handler, options => options.DelayOverride = (_, _) => Task.CompletedTask);
+        using var manager = Manager(new HttpManifestArtifactSource(new Uri("https://example.test/manifest.json")), handler);
         await manager.ResolveCandidateAsync();
         Assert.Equal(3, attempts);
     }
@@ -170,7 +170,7 @@ public sealed class ArtifactManagerTests
             }
             return Bytes(HttpStatusCode.OK, "abc");
         });
-        using var manager = Manager(new HttpManifestArtifactSource(new Uri("https://example.test/manifest.json")), handler, options => options.DelayOverride = (delay, _) => { observed.Add(delay); return Task.CompletedTask; });
+        using var manager = Manager(new HttpManifestArtifactSource(new Uri("https://example.test/manifest.json")), handler, options: settings => settings.DelayOverride = (delay, _) => { observed.Add(delay); return Task.CompletedTask; });
         await manager.ResolveCandidateAsync();
         Assert.Contains(TimeSpan.FromSeconds(7), observed);
     }
@@ -202,7 +202,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Current_metadata_is_atomically_promoted()
+    public async Task Current_snapshot_metadata_is_atomically_promoted()
     {
         var source = new MutableSource("r1", "abc");
         using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)));
@@ -213,7 +213,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Downloading_candidate_does_not_change_current()
+    public async Task Downloading_candidate_does_not_change_current_snapshot()
     {
         var source = new MutableSource("r1", "one");
         using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)));
@@ -226,7 +226,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Discarding_candidate_leaves_current_untouched()
+    public async Task Discarding_candidate_leaves_current_snapshot_untouched()
     {
         var source = new MutableSource("r1", "one");
         using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)));
@@ -239,7 +239,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Promoting_candidate_changes_current()
+    public async Task Promoting_candidate_changes_current_snapshot()
     {
         var source = new MutableSource("r1", "one");
         using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)));
@@ -250,7 +250,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Promotion_cleanup_removes_obsolete_snapshots()
+    public async Task Cleanup_removes_obsolete_snapshots_after_promotion()
     {
         var source = new MutableSource("r1", "one");
         using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)));
@@ -267,10 +267,10 @@ public sealed class ArtifactManagerTests
     {
         var source = new MutableSource("r1", "one");
         var failDelete = false;
-        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options =>
+        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options: settings =>
         {
-            options.LockedFileDeleteRetries = 0;
-            options.DeleteDirectoryOverride = (path, _) => failDelete ? Task.FromException(new IOException("locked")) : Delete(path);
+            settings.LockedFileDeleteRetries = 0;
+            settings.DeleteDirectoryOverride = (path, _) => failDelete ? Task.FromException(new IOException("locked")) : Delete(path);
         });
         var first = await manager.ResolveCandidateAsync(); await manager.PromoteAsync(first, false);
         source.Revision = "r2"; source.Content = "two";
@@ -292,7 +292,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Remote_resolution_failure_falls_back_to_current()
+    public async Task Remote_resolution_failure_falls_back_to_current_snapshot()
     {
         var source = new MutableSource("r1", "one");
         using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)));
@@ -304,7 +304,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Remote_resolution_failure_without_current_fails_cleanly()
+    public async Task Remote_resolution_failure_with_no_current_snapshot_fails_cleanly()
     {
         var source = new MutableSource("r1", "one") { FailResolution = true };
         using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, "x")));
@@ -314,10 +314,10 @@ public sealed class ArtifactManagerTests
     [Theory]
     [InlineData(ArtifactUpdatePolicy.Never)]
     [InlineData(ArtifactUpdatePolicy.Manual)]
-    public async Task Never_and_manual_reuse_current_without_remote_check(ArtifactUpdatePolicy policy)
+    public async Task Never_and_manual_policies_reuse_current_without_remote_check(ArtifactUpdatePolicy policy)
     {
         var source = new MutableSource("r1", "one");
-        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options => options.UpdatePolicy = policy);
+        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options: settings => settings.UpdatePolicy = policy);
         var first = await manager.ResolveCandidateAsync(); await manager.PromoteAsync(first);
         var count = source.ResolveCount;
         await manager.ResolveCandidateAsync();
@@ -325,10 +325,10 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Manual_refresh_forces_remote_check()
+    public async Task Manual_refresh_forces_remote_revision_check()
     {
         var source = new MutableSource("r1", "one");
-        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options => options.UpdatePolicy = ArtifactUpdatePolicy.Manual);
+        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options: settings => settings.UpdatePolicy = ArtifactUpdatePolicy.Manual);
         var first = await manager.ResolveCandidateAsync(); await manager.PromoteAsync(first);
         source.Revision = "r2";
         var second = await manager.RefreshAsync();
@@ -336,10 +336,10 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task OnStartup_checks_remote_revision()
+    public async Task OnStartup_policy_checks_remote_revision()
     {
         var source = new MutableSource("r1", "one");
-        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options => options.UpdatePolicy = ArtifactUpdatePolicy.OnStartup);
+        using var manager = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, source.Content)), options: settings => settings.UpdatePolicy = ArtifactUpdatePolicy.OnStartup);
         var first = await manager.ResolveCandidateAsync(); await manager.PromoteAsync(first);
         var count = source.ResolveCount;
         await manager.ResolveCandidateAsync();
@@ -347,7 +347,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Local_directory_is_used_without_copying()
+    public async Task Local_directory_source_works_without_unnecessary_copying()
     {
         using var local = new TempDirectory();
         await File.WriteAllTextAsync(Path.Combine(local.Path, "weights.gguf"), "abc");
@@ -359,7 +359,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Artifact_fingerprint_is_deterministic()
+    public async Task Artifact_fingerprints_are_deterministic()
     {
         using var local = new TempDirectory();
         await File.WriteAllTextAsync(Path.Combine(local.Path, "a.bin"), "abc");
@@ -383,22 +383,23 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Different_variants_from_same_source_do_not_collide()
+    public async Task Different_artifact_selections_from_one_repository_do_not_collide()
     {
         using var cache = new TempDirectory();
-        var handler = HuggingFaceHandler("""{"sha":"same","siblings":[{"rfilename":"int8.bin"},{"rfilename":"fp32.bin"}]}""", "x");
-        using var int8 = Manager(new HuggingFaceArtifactSource("org/repo", ArtifactSelection.Explicit("int8", "int8.bin")), handler, cache: cache.Path);
-        using var fp32 = Manager(new HuggingFaceArtifactSource("org/repo", ArtifactSelection.Explicit("fp32", "fp32.bin")), handler, cache: cache.Path);
+        var handlerA = HuggingFaceHandler("""{"sha":"same","siblings":[{"rfilename":"int8.bin"},{"rfilename":"fp32.bin"}]}""", "x");
+        var handlerB = HuggingFaceHandler("""{"sha":"same","siblings":[{"rfilename":"int8.bin"},{"rfilename":"fp32.bin"}]}""", "x");
+        using var int8 = Manager(new HuggingFaceArtifactSource("org/repo", ArtifactSelection.Explicit("int8", "int8.bin")), handlerA, cache: cache.Path);
+        using var fp32 = Manager(new HuggingFaceArtifactSource("org/repo", ArtifactSelection.Explicit("fp32", "fp32.bin")), handlerB, cache: cache.Path);
         var a = await int8.ResolveCandidateAsync();
         var b = await fp32.ResolveCandidateAsync();
         Assert.NotEqual(a.CacheRoot, b.CacheRoot);
     }
 
     [Fact]
-    public async Task Cache_lock_prevents_concurrent_corruption()
+    public async Task Cache_locking_prevents_concurrent_corruption()
     {
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var source = new BlockingSource(entered, gate);
         using var cache = new TempDirectory();
         using var first = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, "abc")), cache: cache.Path);
@@ -408,7 +409,7 @@ public sealed class ArtifactManagerTests
         var secondTask = second.ResolveCandidateAsync();
         await Task.Delay(50);
         Assert.Equal(1, source.ResolveCount);
-        gate.SetResult();
+        gate.SetResult(true);
         await firstTask;
         await secondTask;
     }
@@ -416,17 +417,17 @@ public sealed class ArtifactManagerTests
     [Fact]
     public async Task Cancellation_while_waiting_for_cache_lock_works()
     {
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var source = new BlockingSource(entered, gate);
         using var cache = new TempDirectory();
         using var first = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, "abc")), cache: cache.Path);
-        using var second = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, "abc")), cache: cache.Path, options: o => o.LockRetryDelay = TimeSpan.FromMilliseconds(5));
+        using var second = Manager(source, new RouterHandler(_ => Bytes(HttpStatusCode.OK, "abc")), cache: cache.Path, options: settings => settings.LockRetryDelay = TimeSpan.FromMilliseconds(5));
         var firstTask = first.ResolveCandidateAsync();
         await entered.Task;
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second.ResolveCandidateAsync(cancellationToken: cts.Token));
-        gate.SetResult();
+        gate.SetResult(true);
         await firstTask;
     }
 
@@ -441,7 +442,7 @@ public sealed class ArtifactManagerTests
     }
 
     [Fact]
-    public async Task Core_has_no_onnx_or_embedding_specific_assumptions()
+    public async Task Package_has_no_onnx_or_embedding_specific_assumptions()
     {
         using var local = new TempDirectory();
         await File.WriteAllTextAsync(Path.Combine(local.Path, "weights.gguf"), "model");
@@ -492,7 +493,7 @@ public sealed class ArtifactManagerTests
         }
     }
 
-    private sealed class BlockingSource(TaskCompletionSource entered, TaskCompletionSource gate) : IModelArtifactSource
+    private sealed class BlockingSource(TaskCompletionSource<bool> entered, TaskCompletionSource<bool> gate) : IModelArtifactSource
     {
         private int count;
         public int ResolveCount => count;
@@ -503,7 +504,7 @@ public sealed class ArtifactManagerTests
         {
             _ = httpClient;
             Interlocked.Increment(ref count);
-            entered.TrySetResult();
+            entered.TrySetResult(true);
             await gate.Task.WaitAsync(cancellationToken);
             return new ResolvedArtifactSet("blocking", "r1", [new ArtifactAsset("a.bin", new Uri("https://cdn.test/a.bin"), 3)]);
         }

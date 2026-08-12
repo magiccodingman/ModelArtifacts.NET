@@ -40,7 +40,6 @@ internal static unsafe class NativeRuntime
     }
 
     public static ArtifactManager GetManager(nint handle) => Managers.TryGetValue(handle, out var manager) ? manager : throw new InvalidHandleException("Invalid artifact manager handle.");
-
     public static ArtifactManager RemoveManager(nint handle) => Managers.TryRemove(handle, out var manager) ? manager : throw new InvalidHandleException("Invalid artifact manager handle.");
 
     public static nint AddCandidate(ArtifactCandidate candidate)
@@ -51,7 +50,6 @@ internal static unsafe class NativeRuntime
     }
 
     public static ArtifactCandidate GetCandidate(nint handle) => Candidates.TryGetValue(handle, out var candidate) ? candidate : throw new InvalidHandleException("Invalid artifact candidate handle.");
-
     public static ArtifactCandidate RemoveCandidate(nint handle) => Candidates.TryRemove(handle, out var candidate) ? candidate : throw new InvalidHandleException("Invalid artifact candidate handle.");
 
     public static string ReadUtf8(byte* value, nuint length)
@@ -142,7 +140,6 @@ internal static unsafe class NativeRuntime
     };
 
     private static string Required(string? value, string name) => !string.IsNullOrWhiteSpace(value) ? value : throw new ArgumentException($"'{name}' is required.");
-
     private static nint NewHandle() => checked((nint)Interlocked.Increment(ref nextHandle));
 }
 
@@ -181,4 +178,6 @@ internal sealed record NativeCandidateMetadata(
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = false)]
 [JsonSerializable(typeof(NativeManagerConfig))]
 [JsonSerializable(typeof(NativeCandidateMetadata))]
-internal sealed partial class NativeJsonContext : JsonSerializerContext;
+internal sealed partial class NativeJsonContext : JsonSerializerContext
+{
+}

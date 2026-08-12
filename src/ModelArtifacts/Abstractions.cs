@@ -36,10 +36,16 @@ public sealed class ArtifactSelection
     private ArtifactSelection(string identity, string[] paths, string[] patterns, bool selectAll)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identity);
-        Identity = identity;
         this.paths = paths;
         this.patterns = patterns;
         this.selectAll = selectAll;
+
+        var definition = selectAll
+            ? "all"
+            : paths.Length > 0
+                ? "paths\n" + string.Join('\n', paths)
+                : "patterns\n" + string.Join('\n', patterns);
+        Identity = $"{identity}-{ArtifactPathSafety.StableHash(definition)[..12]}";
     }
 
     public string Identity { get; }
